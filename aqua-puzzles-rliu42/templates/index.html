@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta content="width=device-width, initial-scale=1" name="viewport">
+    <meta name="format-detection" content="telephone=no">
+    <link href='https://fonts.googleapis.com/css?family=Roboto+Slab:300' rel='stylesheet' type='text/css'>
+    <link href='https://fonts.googleapis.com/css?family=Roboto' rel='stylesheet' type='text/css'>
+    <link href='https://fonts.googleapis.com/css?family=Roboto+Condensed' rel='stylesheet' type='text/css'>
+    <link href='https://fonts.googleapis.com/css?family=Lato' rel='stylesheet' type='text/css'>
+    <link href="{{ url_for('static', filename='css/main.css') }}" rel="stylesheet" type='text/css'>
+    <link href="{{ url_for('static', filename='css/aqua.css') }}" rel="stylesheet" type='text/css'>
+    <link rel="icon" href="{{ url_for('static', filename='img/aquarium.png') }}">
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.3/jquery.min.js"></script>
+    <title>Aquarium Puzzlehunt</title>
+</head>
+<style>
+body {
+    font-family: 'Roboto Condensed', 'Roboto Slab', 'Courier', serif !important;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    user-select: none;
+}
+
+.page-header {
+    font-family: 'Lato', sans-serif;
+}
+
+h4,
+th {
+    color: black;
+    font-family: 'Lato', sans-serif;
+}
+
+.input-group,
+.page-header,
+audio,
+input {
+    width: 100%;
+    max-width: 900px;
+}
+
+.input-group {
+    margin-bottom: 10px;
+}
+
+input {
+    padding: 4px !important;
+    font-family: 'Roboto', sans-serif;
+    height: 36px !important;
+    font-size: 13px !important;
+}
+
+audio {
+    margin-top: 5px;
+    margin-bottom: -5px;
+}
+
+table,
+th {
+    text-align: center;
+    font-size: 13px;
+}
+
+table tr {
+    cursor: pointer;
+}
+
+.stats {
+    margin-top: 4px;
+    background-color: #eee;
+    padding: 5px;
+}
+
+tr.complete td,
+.stat-value {
+    font-weight: bold;
+}
+
+.stat-label {
+    font-size: 80%;
+    color: #666;
+    text-transform: uppercase;
+}
+
+tr.old {
+    opacity: 0.4;
+}
+
+table tr td small {
+    color: #222;
+}
+</style>
+
+<body>
+    <div class="container-fluid">
+        <div class="page-header hidden-xs">
+            <h3><b>Aquarium Puzzlehunt</b>
+            <small id="year"></small>
+            </h3>
+            <div class="stats">
+                <span class="stat-label">Teams </span> <span class="numTeams stat-value"></span> &middot;
+                <span class="stat-label">Solves </span> <span class="totalSolved stat-value"></span> &middot;
+                <span class="stat-label">Texts </span> <span class="texts stat-value"></span> &middot;
+                <span class="stat-label">Cost </span> <span class="cost stat-value"></span> &middot;
+                <span class="stat-label hidden-xs">Last update </span> <span class="lastUpdate stat-value"></span><span>s</span>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-lg-8 col-xs-12">
+                <div class="stats hidden-lg hidden-md hidden-sm">
+                    <span class="stat-label">Teams </span> <span class="numTeams stat-value"></span> &middot;
+                    <span class="stat-label">Solves </span> <span class="totalSolved stat-value"></span> &middot;
+                    <span class="stat-label">Texts </span> <span class="texts stat-value"></span> &middot;
+                    <span class="stat-label">Cost </span> <span class="cost stat-value"></span> &middot;
+                </div>
+                <h4><b>Rankings</b></h4>
+                <table class="table table-condensed table-striped table-bordered table-hover table-responsive" id="teams">
+                    <thead>
+                        <tr>
+                            <th>Team</th>
+                            <th>Solved</th>
+                            <th>Total</th>
+                            <th>Elapsed <small>(MM.SS)</small></th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+                <h4><b>Puzzles</b></h4>
+                <table class="table table-condensed table-striped table-bordered table-hover table-responsive" id="solves">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th># solves</th>
+                            <th>submissions</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+                <div class="input-group input-group-lg">
+                    <input id="announce" type="text" class="form-control" placeholder="SPAM ANNOUNCEMENT">
+                </div>
+            </div>
+            <div class="col-lg-4 hidden-xs">
+                <a class="twitter-timeline" data-theme="dark" data-show-replies="true" data-link-color="#3dc1ff" data-chrome="noheader nofooter" href="https://twitter.com/aquapuzzlebot"></a>
+                <script async src="//platform.twitter.com/widgets.js" charset="utf-8"></script>
+            </div>
+        </div>
+    </div>
+</body>
+<script>
+var updateInterval = 30;
+var numberPuzzles;
+
+if (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
+    $("table").css({
+        "font-size": "11px"
+    })
+    $("th").css({
+        "font-size": "11px"
+    })
+}
+
+function getTeams() {
+    $.ajax({
+        url: "/teams",
+        success: function(data) {
+            var totalSolved = 0;
+            var totalTexts = 0;
+            var lines = data.match(/[^\r\n]+/g);
+            $("#teams").find('tbody').html('');
+            var entries = [];
+            for (var i in lines) {
+                var entry = {}
+                var line = lines[i];
+                entry.name = line.split("~")[0].replace(/\"/g, "");
+                entry.number = line.split("~")[1];
+                entry.elapsed = line.split("~")[2];
+                var solved = line.split("~")[3].split(",");
+                solved = solved[0] ? solved : [];
+                entry.total = solved.length
+                entry.solved = solved.join(" &middot; ");
+                entry.texts = parseInt(line.split("~")[4]) || 0
+                totalTexts += entry.texts;
+                totalSolved += entry.total;
+                entries.push(entry);
+            }
+            entries.sort(function(a, b) {
+                return (b.total - a.total) * 100 + (a.elapsed - b.elapsed)
+            });
+            $(".totalSolved").html(parseInt(totalSolved));
+            $(".numTeams").html(entries.length);
+            for (var j in entries) {
+                var entry = entries[j]
+                var row = "\<tr class='team-item' id='" + entry.name + "'\>\<td\><b>" + entry.name + "</b>\<small\> " + entry.number + "\<\/small\>" +
+                    "\<\/td\>\<td class='solved'\>" + entry.solved +
+                    "\<\/td\>\<td class='total'\>" + entry.total +
+                    "\<\/td\>\<td class='elapsed'\>" + entry.elapsed +
+                    "\<\/td\>\<\/tr\>";
+                $("#teams").find('tbody').append(row);
+                if (/meta/i.test(entry.solved)) {
+                    $($("#teams tbody").find('tr')[j]).addClass("success complete");
+                } else {
+                    $($("#teams tbody").find('tr')[j]).addClass((i % 2) ? "primary" : "default")
+                }
+                if (entry.elapsed > 1000) {
+                    $($("#teams tbody").find('tr')[j]).addClass("old");
+                }
+            }
+            $(".team-item").click(function() {
+                var name = $(this).attr("id");
+                if (name) {
+                    location.href = "/team?Name=" + encodeURIComponent(name);
+                }
+            });
+            totalTexts += entries.length;
+            $(".texts").html(totalTexts);
+            var cost = (1 + 0.015 * (totalTexts)).toFixed(2);
+            $(".cost").html("$" + cost);
+            $(".lastUpdate").html("0");
+        }
+    });
+}
+
+function getSolved() {
+    $.ajax({
+        url: "/solved",
+        success: function(data) {
+            var tables = data.split(/\#[^\r\n]+/g);
+            var progressTable = tables[1].match(/\d[^\r\n]+/g);
+            var solvesTable = tables[2].match(/(\d|\w+)[^\r\n]+/g);
+            numberPuzzles = solvesTable.length;
+            $("#solves").find('tbody').html('');
+            for (var k in solvesTable) {
+                var id = solvesTable[k].split(":")[0];
+                var solves = solvesTable[k].split(" ")[1];
+                var row = "\<tr class='puzzle-item' id='" + id + "'\>\<td\>" + id.toString() +
+                    "\<\/td\>\<td\>" + solves.toString() +
+                    "\<\/td\>\<td\>\<\/td\>\<\/tr\>"
+                $("#solves").find('tbody').append(row);
+                $($("#solves tbody").find('tr')[k]).addClass((k % 2 == 0) ? "primary" : "default")
+            }
+            $(".puzzle-item").click(function() {
+                var id = $(this).attr("id");
+                if (id) {
+                    location.href = "/puzzle?id=" + id;
+                }
+            })
+            getAnswers();
+        }
+    });
+}
+
+function getAnswers() {
+    $.ajax({
+        url: "/answers",
+        success: function(data) {
+            var lines = data.match(/[^\r\n]+/g);
+            var id = 0;
+            for (var l in lines) {
+                var line = lines[l].replace(/\"/g, "")
+                if (/\([\d]+\)/.test(line) && id > 0) {
+                    var row = $("#solves tbody tr")[id - 1];
+                    cells = $(row).find('td');
+                    cells[2].innerHTML += line + " &middot; ";
+                } else {
+                    id = parseInt(line) || numberPuzzles;
+                }
+            }
+        }
+    });
+}
+$(document).ready(function() {
+    getSolved();
+    getTeams();
+    $("#year").html(new Date().getFullYear());
+    setInterval(function() {
+        $.each($(".elapsed"), function(i, val) {
+            if (!$($(this).parent()).hasClass("success")) {
+                $(this).html(parseFloat(parseFloat($(this).html()) + 0.01).toFixed(2));
+            }
+        });
+        $(".lastUpdate").html(parseInt(parseInt($($(".lastUpdate")[0]).html()) + 1));
+    }, 1000);
+    setInterval(function() {
+        getSolved();
+        getTeams();
+    }, updateInterval * 1000);
+    window.twttr = (function(d, s, id) {
+        var t, js, fjs = d.getElementsByTagName(s)[0];
+        if (d.getElementById(id)) return;
+        js = d.createElement(s);
+        js.id = id;
+        js.src = "https://platform.twitter.com/widgets.js";
+        fjs.parentNode.insertBefore(js, fjs);
+        return window.twttr || (t = {
+            _e: [],
+            ready: function(f) {
+                t._e.push(f)
+            }
+        });
+
+    }(document, "script", "twitter-wjs"));
+    twttr.ready(function(twttr) {
+        twttr.widgets.load();
+        setInterval(function() {
+            twttr.widgets.load();
+            console.log("update twitter feed");
+        }, 5000);
+    });
+})
+</script>
+
+</html>
